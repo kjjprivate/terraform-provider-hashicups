@@ -13,7 +13,7 @@ import (
 
 // Ensure the implementation satisfies the expexted interfaces
 var (
-	_ datasource.DataSource = &coffeeDatasources{}
+	_ datasource.DataSource = &coffeesDataSource{}
 	_ datasource.DataSourceWithConfigure = &coffeesDataSource{}
 )
 
@@ -29,8 +29,8 @@ type coffeesDataSource struct {
 
 
 //coffeeDataSourceModel maps the data source schema data
-type coffeeDataSourceModel struct {
-	Coffees []coffeesModel `tfsdk:"coffeees"`
+type coffeesDataSourceModel struct {
+	Coffees []coffeesModel `tfsdk:"coffees"`
 }
 
 // coffeesModel maps coffees schema data
@@ -39,13 +39,13 @@ type coffeesModel struct {
 	Name 		types.String	`tfsdk:"name"`
 	Teaser		types.String	`tfsdk:"teaser"`
 	Description types.String 	`tfsdk:"description"`
-	Price 		types.String	`tfsdk:"price"`
+	Price 		types.Float64	`tfsdk:"price"`
 	Image		types.String 	`tfsdk:"image"`
-	Ingredients types.String    `tfsdk:"ingredients"`
+	Ingredients []coffeesIngredientsModel    `tfsdk:"ingredients"`
 }
 
 // coffeesIngredientModel maps coffee ingredients data
-type coffeesIngredientModel struct {
+type coffeesIngredientsModel struct {
 	ID types.Int64 `tfsdk:"id"`
 }
 
@@ -68,7 +68,7 @@ func (d *coffeesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 						},
 						"name": schema.StringAttribute{
 							Computed: true,
-						}
+						},
 						"teaser": schema.StringAttribute{
 							Computed: true,
 						},
@@ -84,7 +84,7 @@ func (d *coffeesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 						"ingredients": schema.ListNestedAttribute{
 							Computed: true,
 							NestedObject: schema.NestedAttributeObject{
-								Attribute: map[string]schema.Attribute{
+								Attributes: map[string]schema.Attribute{
 									"id": schema.Int64Attribute{
 										Computed: true,
 									},
@@ -98,10 +98,42 @@ func (d *coffeesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 	}
 }
 
-
-
 // Read refreshes the Terraform state with the latest data
-func (d *coffeesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {}
+func (d *coffeesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+
+	var state coffeesDataSourceModel
+	coffees, err := d.client.GetCoffees()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Read Hashicups Coffees",
+			err.Error(),
+		)
+		return
+	}
+	for _, coffee := range coffees {
+		coffeeState := coffeesModel{
+			ID: types.Int64Value(int64(coffee.ID)),
+			Name: types.StringValue(coffee.Name),
+			Teaser: types.StringValue(coffee.Teaser),
+			Description: types.StringValue(coffee.Description),
+			Price:	types.Float64Value(coffee.Price),
+			Image: types.StringValue(coffee.Image),
+		}
+		for _, ingredient := range coffee.Ingredient {
+			coffeeState.Ingredients = append(coffeeState.Ingredients, coffeesIngredientsModel{
+				ID: types.Int64Value(int64(ingredient.ID)),
+			})
+		}
+
+		state.Coffees = append(state.Coffees, coffeeState)
+	}
+
+	diags := resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+}
 
 //Configure adds the provider configured client to the data source.
 func (d *coffeesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -115,7 +147,7 @@ func (d *coffeesDataSource) Configure(_ context.Context, req datasource.Configur
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.SPrintf("Expected *hashicups.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *hashicups.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
