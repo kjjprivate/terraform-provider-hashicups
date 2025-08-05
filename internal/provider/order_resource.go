@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp-demoapp/hashicups-client-go"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -58,6 +60,9 @@ func (r *orderResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"last_updated": schema.StringAttribute{
 				Computed: true,
@@ -201,7 +206,68 @@ func (r *orderResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 // Update resource
 func (r *orderResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// plan으로부터 state 값들을 가져온다.
+	var plan orderResourceModel
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
+	// plan으로부터 API Request body를 생성한다.
+	var hashicupsItems []hashicups.OrderItem
+	for _, item := range plan.Items {
+		hashicupsItems = append(hashicupsItems, hashicups.OrderItem{
+			Coffee: hashicups.Coffee{
+				ID: int(item.Coffee.ID.ValueInt64()),
+			},
+			Quantity: int(item.Quantity.ValueInt64()),
+		})
+	}
+
+	// 기존에 존재하는 order를 업데이트 한다.
+	_, err := r.client.UpdateOrder(plan.ID.ValueString(), hashicupsItems)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Updating Hashicups Order",
+			"Could not update order, unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	// "UpdateOrder" 항목이 채워지지 않았으므로 "GetOrder"에서 업데이트 된  힝목을 가져옵니다.
+	order, err := r.client.GetOrder(plan.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Reading HashiCups Order",
+			"Could not read Hashicups order ID : "+plan.ID.ValueString()+": "+err.Error(),
+		)
+		return
+	}
+
+	// resource state를 변경한 item과 timestamp로 업데이트 합니다.
+	plan.Items = []orderItemModel{}
+	for _, item := range order.Items {
+		plan.Items = append(plan.Items, orderItemModel{
+			Coffee: orderItemCoffeeModel{
+				ID:          types.Int64Value(int64(item.Coffee.ID)),
+				Name:        types.StringValue(item.Coffee.Name),
+				Teaser:      types.StringValue(item.Coffee.Teaser),
+				Description: types.StringValue(item.Coffee.Description),
+				Price:       types.Float64Value(item.Coffee.Price),
+				Image:       types.StringValue(item.Coffee.Image),
+			},
+			Quantity: types.Int64Value(int64(item.Quantity)),
+		})
+	}
+	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
+
+	// Set state to fully populated data
+	diags = resp.State.Set(ctx, plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (r *orderResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

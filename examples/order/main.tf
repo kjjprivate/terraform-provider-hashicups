@@ -14,39 +14,20 @@ provider "hashicups" {
 }
 
 resource "hashicups_order" "edu" {
-#   id = "1"
   items = [{
     coffee = {
       id = 3
     }
     quantity = 2
-    }, {
-    coffee = {
-      id = 1
-    }
-    quantity = 2
-    }
-  ]
-}
-resource "hashicups_order" "edu2" {
-#   id = "2"
-  items = [{
-    coffee = {
-      id = 3
-    }
-    quantity = 2
-    }, {
-    coffee = {
-      id = 1
-    }
-    quantity = 2
-    }
-  ]
+    },
+    {
+      coffee = {
+        id = 8
+      }
+      quantity = 5
+  }]
 }
 
-output "edu_order" {
-  value = hashicups_order.edu
-}
-output "edu_order2" {
-  value = hashicups_order.edu2
-}
+# output "edu_order" {
+#   value = hashicups_order.edu
+# }
