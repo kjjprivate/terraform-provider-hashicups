@@ -1,5 +1,3 @@
-package provider
-
 import (
 	"context"
 	"fmt"
@@ -7,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hashicorp-demoapp/hashicups-client-go"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -15,8 +14,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &orderResource{}
-	_ resource.ResourceWithConfigure = &orderResource{}
+	_ resource.Resource                = &orderResource{}
+	_ resource.ResourceWithConfigure   = &orderResource{}
+	_ resource.ResourceWithImportState = &orderResource{}
 )
 
 // orderResourceModel maps the resource schema data.
@@ -262,7 +262,7 @@ func (r *orderResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
-	// Set state to fully populated data
+	// Set state to fully populated dat
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -307,4 +307,9 @@ func (r *orderResource) Configure(_ context.Context, req resource.ConfigureReque
 	}
 
 	r.client = client
+}
+
+func (r *orderResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Retrieve import ID and save to id attribute
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
